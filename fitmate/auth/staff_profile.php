@@ -3,187 +3,252 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth_check.php';
 
 $page_title = "Staff Profile";
-$staffId = $_GET['id'] ?? '';
+$staffId = trim($_GET['id'] ?? '');
 
-// 1. Kunin ang base info + subtype details ng staff
+if ($staffId === '') {
+    header("Location: /fitmate/auth/staff_records.php");
+    exit;
+}
+
+// 1. Fetch main staff record + subtype details + system access
 $stmt = $pdo->prepare("
     SELECT gs.*,
            t.Certification,
-           sa.Username AS SystemUsername, sa.Role AS SystemRole
+           m.WorkSchedule, m.AssignedTask,
+           sa.Username AS SystemUsername,
+           sa.Role AS AccessRole
     FROM gym_staff gs
     LEFT JOIN trainer t ON gs.StaffID = t.StaffID
+    LEFT JOIN maintenance m ON gs.StaffID = m.StaffID
     LEFT JOIN system_access sa ON gs.StaffID = sa.StaffID
     WHERE gs.StaffID = ?
 ");
 $stmt->execute([$staffId]);
 $staff = $stmt->fetch();
 
-// Fallback kung walang ?id= sa URL
 if (!$staff) {
-    $staff = $pdo->query("
-        SELECT gs.*, t.Certification, sa.Username AS SystemUsername, sa.Role AS SystemRole
-        FROM gym_staff gs
-        LEFT JOIN trainer t ON gs.StaffID = t.StaffID
-        LEFT JOIN system_access sa ON gs.StaffID = sa.StaffID
-        ORDER BY gs.StaffID ASC LIMIT 1
-    ")->fetch();
-    $staffId = $staff['StaffID'] ?? '';
+    header("Location: /fitmate/auth/staff_records.php");
+    exit;
 }
 
-// 2. Kunin ang related records base sa StaffType
-$handledPrograms = [];
-$maintSchedules  = [];
-$assignedEquips  = [];
-$staffLogins     = [];
+// 2. Fetch Recent System Login History for this staff member (without displaying LoginID)
+$logStmt = $pdo->prepare("
+    SELECT LoginDate, LoginTime
+    FROM login_history
+    WHERE StaffID = ?
+    ORDER BY LoginID DESC
+    LIMIT 30
+");
+$logStmt->execute([$staffId]);
+$loginLogs = $logStmt->fetchAll();
 
-if ($staff) {
-    if ($staff['StaffType'] === 'Trainer') {
-        $pStmt = $pdo->prepare("SELECT * FROM program WHERE StaffID = ? ORDER BY ProgramID ASC");
-        $pStmt->execute([$staffId]);
-        $handledPrograms = $pStmt->fetchAll();
-    } elseif ($staff['StaffType'] === 'Maintenance') {
-        $mStmt = $pdo->prepare("SELECT * FROM maintenance WHERE StaffID = ?");
-        $mStmt->execute([$staffId]);
-        $maintSchedules = $mStmt->fetchAll();
-
-        $eStmt = $pdo->prepare("SELECT * FROM equipment WHERE StaffID = ? ORDER BY EquipmentID ASC");
-        $eStmt->execute([$staffId]);
-        $assignedEquips = $eStmt->fetchAll();
-    } elseif ($staff['StaffType'] === 'Admin') {
-        $lStmt = $pdo->prepare("SELECT * FROM login_history WHERE StaffID = ? ORDER BY LoginID DESC LIMIT 10");
-        $lStmt->execute([$staffId]);
-        $staffLogins = $lStmt->fetchAll();
-    }
+// 3. If Trainer, fetch assigned programs/sessions if any
+$trainerPrograms = [];
+if ($staff['StaffType'] === 'Trainer') {
+    $progStmt = $pdo->prepare("
+        SELECT *
+        FROM program
+        WHERE StaffID = ?
+        ORDER BY ProgramID ASC
+    ");
+    $progStmt->execute([$staffId]);
+    $trainerPrograms = $progStmt->fetchAll();
 }
 
 include __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="card">
-    <?php if (!$staff): ?>
-        <p>No staff record found.</p>
-    <?php else: 
-        $badgeClass = 'badge';
-        if ($staff['StaffType'] === 'Trainer') $badgeClass = 'badge badge-green';
-        elseif ($staff['StaffType'] === 'Maintenance') $badgeClass = 'badge badge-amber';
-    ?>
-        <!-- HEADER BANNER -->
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:16px; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
-            <div>
-                <h2 style="display:flex; align-items:center; gap:10px;">
-                    <?= htmlspecialchars($staff['FirstName'] . ' ' . $staff['LastName']) ?>
-                    <span class="<?= $badgeClass ?>"><?= htmlspecialchars($staff['StaffType']) ?></span>
-                </h2>
-                <p style="font-size:13px; color:#94a3b8; margin-top:4px;">
-                    Staff ID: <strong><?= htmlspecialchars($staff['StaffID']) ?></strong> | Date of Birth: <?= htmlspecialchars($staff['DateOfBirth'] ?? '-') ?>
-                </p>
-            </div>
-            <a href="/fitmate/auth/staff_records.php" class="btn btn-primary btn-sm">Back to Staff Records</a>
-        </div>
+<style>
+    .main-wrapper, .main-content {
+        height: 100vh !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    .content-area, .container {
+        flex: 1 !important;
+        height: calc(100vh - 60px) !important;
+        max-height: calc(100vh - 60px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        padding: 16px 22px !important;
+        gap: 14px !important;
+    }
 
-        <!-- GENERAL & ROLE DETAILS -->
-        <div class="grid-equal">
-            <div style="background:#080d1a; border:1px solid #1e293b; border-radius:8px; padding:16px;">
-                <h4 style="color:#60a5fa; margin-bottom:10px;">Personal Information</h4>
-                <p style="font-size:13px; margin-bottom:6px;"><strong>Staff ID:</strong> <?= htmlspecialchars($staff['StaffID']) ?></p>
-                <p style="font-size:13px; margin-bottom:6px;"><strong>Full Name:</strong> <?= htmlspecialchars($staff['FirstName'] . ' ' . $staff['LastName']) ?></p>
-                <p style="font-size:13px; margin-bottom:6px;"><strong>Date of Birth:</strong> <?= htmlspecialchars($staff['DateOfBirth'] ?? '-') ?></p>
-                <p style="font-size:13px;"><strong>Staff Role / Type:</strong> <?= htmlspecialchars($staff['StaffType']) ?></p>
-            </div>
+    .profile-header-card {
+        flex-shrink: 0 !important;
+        margin-bottom: 0 !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+    }
 
-            <div style="background:#080d1a; border:1px solid #1e293b; border-radius:8px; padding:16px;">
-                <h4 style="color:#60a5fa; margin-bottom:10px;">Role & Subtype Details</h4>
-                <?php if ($staff['StaffType'] === 'Trainer'): ?>
-                    <p style="font-size:13px; margin-bottom:6px;"><strong>Certification:</strong> <?= htmlspecialchars($staff['Certification'] ?: 'No certification recorded') ?></p>
-                    <p style="font-size:13px;"><strong>Total Programs Handled:</strong> <?= count($handledPrograms) ?> Program(s)</p>
-                <?php elseif ($staff['StaffType'] === 'Maintenance'): ?>
-                    <p style="font-size:13px; margin-bottom:6px;"><strong>Assigned Schedules:</strong> <?= count($maintSchedules) ?> Schedule(s)</p>
-                    <p style="font-size:13px;"><strong>Equipment Assigned:</strong> <?= count($assignedEquips) ?> Item(s)</p>
-                <?php else: ?>
-                    <p style="font-size:13px; margin-bottom:6px;"><strong>System Username:</strong> <?= htmlspecialchars($staff['SystemUsername'] ?: 'No system access account') ?></p>
-                    <p style="font-size:13px;"><strong>Access Role:</strong> <?= htmlspecialchars($staff['SystemRole'] ?: 'N/A') ?></p>
-                <?php endif; ?>
-            </div>
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        flex-shrink: 0;
+    }
+    .info-grid > .card {
+        margin-bottom: 0 !important;
+    }
+    .info-list {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0 0 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 13.5px;
+        color: #f1f5f9;
+    }
+    .info-list strong {
+        color: #cbd5e1;
+        display: inline-block;
+        min-width: 145px;
+    }
+
+    /* Bottom Card: Full remaining height + internal scrollable table */
+    .bottom-fill-card {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 0 !important;
+        margin-bottom: 0 !important;
+        overflow: hidden !important;
+    }
+    .fixed-table-wrap {
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        background: #0c1324;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+    }
+    .fixed-table {
+        width: 100%;
+        border-collapse: collapse;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+    }
+    .fixed-table thead {
+        flex-shrink: 0;
+        background: #111c35;
+        border-bottom: 2px solid #2563eb;
+    }
+    .fixed-table thead tr,
+    .fixed-table tbody tr {
+        display: table;
+        width: 100%;
+        table-layout: fixed;
+    }
+    .fixed-table tbody {
+        display: block;
+        overflow-y: auto;
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+    }
+    .fixed-table th {
+        padding: 11px 14px;
+        text-align: left;
+        font-size: 12px;
+        font-weight: 700;
+        color: #60a5fa;
+        background: #111c35;
+    }
+    .fixed-table td {
+        padding: 10px 14px;
+        font-size: 13px;
+        color: #f1f5f9;
+        border-bottom: 1px solid #1e293b;
+        vertical-align: middle;
+    }
+    .fixed-table tbody tr:hover {
+        background: rgba(37, 99, 235, 0.08);
+    }
+</style>
+
+<!-- TOP PROFILE SUMMARY CARD -->
+<div class="card profile-header-card">
+    <div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <h2 style="margin: 0; font-size: 22px; color: #ffffff;">
+                <?= htmlspecialchars($staff['FirstName'] . ' ' . $staff['LastName']) ?>
+            </h2>
+            <?php
+                $badgeClass = 'badge';
+                if ($staff['StaffType'] === 'Trainer') $badgeClass = 'badge badge-green';
+                elseif ($staff['StaffType'] === 'Maintenance') $badgeClass = 'badge badge-amber';
+            ?>
+            <span class="<?= $badgeClass ?>"><?= htmlspecialchars($staff['StaffType']) ?></span>
         </div>
-    <?php endif; ?>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #94a3b8;">
+            Staff ID: <strong style="color: #e2e8f0;"><?= htmlspecialchars($staff['StaffID']) ?></strong> |
+            Date of Birth: <?= htmlspecialchars($staff['DateOfBirth']) ?>
+        </p>
+    </div>
+
+    <a href="/fitmate/auth/staff_records.php" class="btn btn-primary">Back to Staff Records</a>
 </div>
 
-<!-- SUBTYPE RELATED TABLES -->
-<?php if ($staff && $staff['StaffType'] === 'Trainer'): ?>
+<!-- PERSONAL INFORMATION & ROLE / SUBTYPE DETAILS -->
+<div class="info-grid">
     <div class="card">
-        <h3 style="margin-bottom: 12px;">Assigned Fitness Programs (<?= count($handledPrograms) ?>)</h3>
-        <table class="table">
-            <thead><tr><th>Program ID</th><th>Program Name</th><th>Schedule</th></tr></thead>
-            <tbody>
-                <?php if (empty($handledPrograms)): ?>
-                    <tr><td colspan="3">No fitness programs assigned to this trainer yet.</td></tr>
-                <?php else: foreach ($handledPrograms as $pr): ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($pr['ProgramID']) ?></strong></td>
-                        <td><?= htmlspecialchars($pr['ProgramName']) ?></td>
-                        <td><?= htmlspecialchars($pr['Schedule'] ?? '-') ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-            </tbody>
-        </table>
-    </div>
-<?php elseif ($staff && $staff['StaffType'] === 'Maintenance'): ?>
-    <div class="card">
-        <h3 style="margin-bottom: 12px;">Maintenance Work Schedules & Tasks</h3>
-        <table class="table">
-            <thead><tr><th>Staff ID</th><th>Work Schedule</th><th>Assigned Task</th></tr></thead>
-            <tbody>
-                <?php if (empty($maintSchedules)): ?>
-                    <tr><td colspan="3">No maintenance schedule found.</td></tr>
-                <?php else: foreach ($maintSchedules as $ms): ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($ms['StaffID']) ?></strong></td>
-                        <td><?= htmlspecialchars($ms['WorkSchedule'] ?? '-') ?></td>
-                        <td><?= htmlspecialchars($ms['AssignedTask'] ?? '-') ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-            </tbody>
-        </table>
+        <h3 style="color: #60a5fa; margin-bottom: 8px;">Personal Information</h3>
+        <ul class="info-list">
+            <li><strong>Staff ID:</strong> <?= htmlspecialchars($staff['StaffID']) ?></li>
+            <li><strong>Full Name:</strong> <?= htmlspecialchars($staff['FirstName'] . ' ' . $staff['LastName']) ?></li>
+            <li><strong>Date of Birth:</strong> <?= htmlspecialchars($staff['DateOfBirth']) ?></li>
+            <li><strong>Staff Role / Type:</strong> <?= htmlspecialchars($staff['StaffType']) ?></li>
+        </ul>
     </div>
 
     <div class="card">
-        <h3 style="margin-bottom: 12px;">Assigned Gym Equipment (<?= count($assignedEquips) ?>)</h3>
-        <table class="table">
-            <thead><tr><th>Equip ID</th><th>Equipment Name</th><th>Status</th><th>Vendor</th></tr></thead>
+        <h3 style="color: #60a5fa; margin-bottom: 8px;">Role & Subtype Details</h3>
+        <ul class="info-list">
+            <?php if ($staff['StaffType'] === 'Trainer'): ?>
+                <li><strong>Certification:</strong> <?= htmlspecialchars($staff['Certification'] ?: 'Not specified') ?></li>
+                <li><strong>Assigned Programs:</strong> <?= count($trainerPrograms) ?> Program(s)</li>
+            <?php elseif ($staff['StaffType'] === 'Maintenance'): ?>
+                <li><strong>Work Schedule:</strong> <?= htmlspecialchars($staff['WorkSchedule'] ?: 'Not specified') ?></li>
+                <li><strong>Assigned Task:</strong> <?= htmlspecialchars($staff['AssignedTask'] ?: 'Not specified') ?></li>
+            <?php else: ?>
+                <li><strong>System Username:</strong> <?= htmlspecialchars($staff['SystemUsername'] ?: 'N/A') ?></li>
+                <li><strong>Access Role:</strong> <?= htmlspecialchars($staff['AccessRole'] ?: $staff['StaffType']) ?></li>
+            <?php endif; ?>
+        </ul>
+    </div>
+</div>
+
+<!-- BOTTOM CARD: RECENT SYSTEM LOGIN HISTORY (NO LOGIN ID COLUMN) -->
+<div class="card bottom-fill-card">
+    <h3 style="margin-bottom: 12px; flex-shrink: 0;">Recent System Login History</h3>
+    <div class="fixed-table-wrap">
+        <table class="fixed-table">
+            <thead>
+                <tr>
+                    <th style="width: 50%;">Login Date</th>
+                    <th style="width: 50%;">Login Time</th>
+                </tr>
+            </thead>
             <tbody>
-                <?php if (empty($assignedEquips)): ?>
-                    <tr><td colspan="4">No equipment assigned to this maintenance staff.</td></tr>
-                <?php else: foreach ($assignedEquips as $eq): 
-                    $eqStatus = $eq['EquipmentStatus'] ?? $eq['Status'] ?? 'Operational';
-                ?>
+                <?php if (empty($loginLogs)): ?>
+                    <tr><td colspan="2" style="text-align: center; color: #94a3b8; padding: 18px;">No login history recorded for this staff member.</td></tr>
+                <?php else: foreach ($loginLogs as $log): ?>
                     <tr>
-                        <td><strong><?= htmlspecialchars($eq['EquipmentID']) ?></strong></td>
-                        <td><?= htmlspecialchars($eq['EquipmentName']) ?></td>
-                        <td><span class="badge <?= $eqStatus === 'Operational' ? 'badge-green' : 'badge-amber' ?>"><?= htmlspecialchars($eqStatus) ?></span></td>
-                        <td><?= htmlspecialchars($eq['Vendor'] ?? '-') ?></td>
+                        <td style="width: 50%;"><?= htmlspecialchars($log['LoginDate']) ?></td>
+                        <td style="width: 50%;"><?= htmlspecialchars($log['LoginTime']) ?></td>
                     </tr>
                 <?php endforeach; endif; ?>
             </tbody>
         </table>
     </div>
-<?php elseif ($staff && $staff['StaffType'] === 'Admin'): ?>
-    <div class="card">
-        <h3 style="margin-bottom: 12px;">Recent System Login History</h3>
-        <table class="table">
-            <thead><tr><th>Login ID</th><th>Login Date</th><th>Login Time</th></tr></thead>
-            <tbody>
-                <?php if (empty($staffLogins)): ?>
-                    <tr><td colspan="3">No login history recorded.</td></tr>
-                <?php else: foreach ($staffLogins as $lg): ?>
-                    <tr>
-                        <td>#<?= htmlspecialchars($lg['LoginID']) ?></td>
-                        <td><?= htmlspecialchars($lg['LoginDate']) ?></td>
-                        <td><?= htmlspecialchars($lg['LoginTime']) ?></td>
-                    </tr>
-                <?php endforeach; endif; ?>
-            </tbody>
-        </table>
-    </div>
-<?php endif; ?>
+</div>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
