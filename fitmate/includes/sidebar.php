@@ -2,8 +2,8 @@
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
 <aside class="sidebar">
-    <div class="brand-box">
-        <h2>FITMATE</h2>
+    <div class="sidebar-logo" style="padding: 0; margin-bottom: 16px; width: 100%; height: 64px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #0c1324 !important; border: 1px solid #2563eb !important; box-shadow: none !important;">
+        <img src="/fitmate/assets/images/logo4.svg" alt="FITMATE Logo" style="width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.03);">
     </div>
 
     <nav class="nav-menu">
