@@ -1,12 +1,9 @@
-CREATE DATABASE IF NOT EXISTS `fitmate_db`;
-USE `fitmate_db`;
-
 -- phpMyAdmin SQL Dump
 -- version 5.2.3
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 20, 2026 at 12:57 AM
+-- Generation Time: Nov 23, 2026 at 08:43 AM
 -- Server version: 10.11.16-MariaDB
 -- PHP Version: 8.3.36
 
@@ -23,6 +20,30 @@ SET time_zone = "+00:00";
 --
 -- Database: `fitmate_db`
 --
+
+DELIMITER $$
+--
+-- Procedures
+--
+CREATE DEFINER=`root`@`localhost` PROCEDURE `sp_ProcessMemberPayment` (IN `p_MemberID` VARCHAR(15), IN `p_StaffID` VARCHAR(15), IN `p_SubscriptionID` VARCHAR(15), IN `p_Amount` DECIMAL(10,2), IN `p_PaymentMethod` VARCHAR(30), IN `p_ReferenceNumber` VARCHAR(50))   BEGIN
+	DECLARE next_id INT;
+    SELECT IFNULL(MAX(PaymentID), 5000) + 1 INTO next_id from payment;
+   
+    INSERT INTO payment (
+        PaymentID, MemberID, StaffID, SubscriptionID,
+        Amount, PaymentDate, PaymentTime, PaymentMethod, ReferenceNumber
+        )
+        VALUES(
+            next_id, p_MemberID, p_StaffID, p_SubscriptionID,
+            p_Amount, CURDATE(), CURTIME(), p_PaymentMethod, p_ReferenceNUmber
+            );
+            
+            UPDATE subscription
+            SET Status = 'Active'
+            WHERE SubscriptionID = p_SubscriptionID AND MemberID = p_MemberID;
+            END$$
+
+DELIMITER ;
 
 -- --------------------------------------------------------
 
@@ -57,7 +78,8 @@ INSERT INTO `application` (`ApplicationID`, `MemberID`, `ProgramID`, `Applicatio
 ('APP312', 'MEM112', 'PRG207', '2026-11-05', 'Approved'),
 ('APP313', 'MEM113', 'PRG208', '2026-11-05', 'Approved'),
 ('APP314', 'MEM114', 'PRG204', '2026-09-25', 'Approved'),
-('APP315', 'MEM115', 'PRG204', '2026-11-10', 'Pending');
+('APP315', 'MEM115', 'PRG204', '2026-11-10', 'Pending'),
+('APP316', 'MEM101', 'PRG206', '2026-11-21', 'Approved');
 
 -- --------------------------------------------------------
 
@@ -191,6 +213,20 @@ INSERT INTO `gym_member` (`MemberID`, `FirstName`, `LastName`, `DateOfBirth`, `P
 ('MEM114', 'Soyou', 'Kang', '1992-02-12', '0915-368-9114', 0),
 ('MEM115', 'Yunjin', 'Huh', '2001-10-08', '0999-825-4115', 0);
 
+--
+-- Triggers `gym_member`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_ArchiveMemberSubscription` AFTER UPDATE ON `gym_member` FOR EACH ROW BEGIN
+	IF NEW.is_archived = 1 AND OLD.is_archived = 0 THEN
+    	UPDATE subscription
+        SET Status = 'Inactive'
+        WHERE MemberID = New.MemberID;
+    END IF;
+END
+$$
+DELIMITER ;
+
 -- --------------------------------------------------------
 
 --
@@ -211,13 +247,15 @@ CREATE TABLE `gym_staff` (
 
 INSERT INTO `gym_staff` (`StaffID`, `FirstName`, `LastName`, `DateOfBirth`, `StaffType`) VALUES
 ('AD-001', 'Keith Nico', 'Carcueba', '2005-11-11', 'Admin'),
+('AD-002', 'Kyle', 'Carcueba', '2000-01-01', 'Admin'),
 ('MNT-003', 'Yugyeom', 'Kim', '1997-11-17', 'Maintenance'),
 ('MNT-004', 'Mark', 'Tuan', '1993-09-04', 'Maintenance'),
 ('TRN-001', 'Sungjin', 'Park', '1993-01-16', 'Trainer'),
 ('TRN-002', 'Young K', 'Kang', '1993-12-19', 'Trainer'),
 ('TRN-005', 'Wonpil', 'Kim', '1994-04-28', 'Trainer'),
 ('TRN-006', 'BamBam', 'Kunpimook', '1997-05-02', 'Trainer'),
-('TRN-007', 'Jackson', 'Wang', '1994-03-28', 'Trainer');
+('TRN-007', 'Jackson', 'Wang', '1994-03-28', 'Trainer'),
+('TRN-008', 'Kyle', 'Carcueba', '2011-02-16', 'Trainer');
 
 -- --------------------------------------------------------
 
@@ -240,7 +278,30 @@ INSERT INTO `login_history` (`LoginID`, `StaffID`, `LoginDate`, `LoginTime`) VAL
 (1, 'AD-001', '2026-11-19', '20:56:56'),
 (2, 'AD-001', '2026-11-20', '06:57:27'),
 (3, 'AD-001', '2026-11-20', '07:02:19'),
-(4, 'AD-001', '2026-11-20', '07:08:20');
+(4, 'AD-001', '2026-11-20', '07:08:20'),
+(5, 'AD-001', '2026-11-20', '08:26:04'),
+(6, 'AD-001', '2026-11-20', '08:27:19'),
+(7, 'AD-001', '2026-11-20', '08:27:33'),
+(8, 'AD-001', '2026-11-20', '10:02:45'),
+(9, 'AD-001', '2026-11-20', '10:34:07'),
+(10, 'AD-001', '2026-11-20', '12:56:15'),
+(11, 'AD-001', '2026-11-20', '13:05:25'),
+(12, 'AD-001', '2026-11-20', '13:08:45'),
+(13, 'AD-001', '2026-11-20', '13:11:56'),
+(14, 'AD-001', '2026-11-20', '13:30:17'),
+(15, 'AD-001', '2026-11-20', '13:35:54'),
+(17, 'AD-001', '2026-11-20', '17:00:46'),
+(18, 'AD-001', '2026-11-20', '17:03:16'),
+(19, 'AD-001', '2026-11-20', '20:34:25'),
+(20, 'AD-001', '2026-11-21', '12:35:13'),
+(21, 'AD-001', '2026-11-21', '16:11:50'),
+(22, 'AD-001', '2026-11-21', '17:40:06'),
+(23, 'AD-002', '2026-11-21', '17:43:50'),
+(24, 'AD-001', '2026-11-21', '17:54:07'),
+(25, 'AD-001', '2026-11-22', '17:16:10'),
+(26, 'AD-001', '2026-11-22', '18:01:43'),
+(27, 'AD-001', '2026-11-23', '14:51:44'),
+(28, 'AD-001', '2026-11-23', '15:32:04');
 
 -- --------------------------------------------------------
 
@@ -307,21 +368,22 @@ CREATE TABLE `payment` (
 --
 
 INSERT INTO `payment` (`PaymentID`, `MemberID`, `StaffID`, `SubscriptionID`, `Amount`, `PaymentDate`, `PaymentTime`, `PaymentMethod`, `ReferenceNumber`) VALUES
-(5001, 'MEM101', 'TRN-001', 'SUB1001', 14500.00, '2026-08-11', '08:15:00', 'Credit Card', 'REF-20260801-001'),
-(5002, 'MEM102', 'TRN-002', 'SUB1002', 14500.00, '2026-09-05', '10:30:00', 'Credit Card', 'REF-20260905-002'),
-(5003, 'MEM103', 'TRN-002', 'SUB1003', 4000.00, '2026-10-10', '14:20:00', 'Debit Card', 'REF-20261010-003'),
-(5004, 'MEM104', 'TRN-005', 'SUB1004', 14500.00, '2026-06-12', '11:05:00', 'Credit Card', 'REF-20260612-004'),
-(5005, 'MEM105', 'TRN-002', 'SUB1005', 1500.00, '2026-11-01', '16:45:00', 'Cash', 'OR-20261101-005'),
-(5006, 'MEM106', 'TRN-006', 'SUB1006', 4000.00, '2026-09-15', '09:50:00', 'Credit Card', 'REF-20260915-006'),
-(5007, 'MEM107', 'TRN-001', 'SUB1007', 1500.00, '2026-11-03', '13:10:00', 'GCash', 'GC-9012837465'),
-(5008, 'MEM108', 'TRN-007', 'SUB1008', 14500.00, '2026-07-20', '15:00:00', 'Credit Card', 'REF-20260720-008'),
-(5009, 'MEM109', 'TRN-002', 'SUB1009', 1500.00, '2026-09-01', '12:30:00', 'Cash', 'OR-20260901-009'),
-(5010, 'MEM110', 'TRN-006', 'SUB1010', 14500.00, '2026-10-08', '09:00:00', 'Debit Card', 'REF-20261008-010'),
-(5011, 'MEM111', 'TRN-005', 'SUB1011', 4000.00, '2026-10-18', '17:15:00', 'Credit Card', 'REF-20261018-011'),
-(5012, 'MEM112', 'TRN-001', 'SUB1012', 14500.00, '2026-05-22', '10:40:00', 'Credit Card', 'REF-20260522-012'),
-(5013, 'MEM113', 'TRN-007', 'SUB1013', 1500.00, '2026-11-05', '11:25:00', 'Maya', 'MY-8473625190'),
-(5014, 'MEM114', 'TRN-006', 'SUB1014', 4000.00, '2026-09-25', '14:25:00', 'Debit Card', 'REF-20260925-014'),
-(5015, 'MEM115', 'TRN-002', 'SUB1015', 1500.00, '2026-11-10', '16:05:00', 'GCash', 'GC-7362519480');
+(5001, 'MEM101', 'AD-001', 'SUB1001', 14500.00, '2026-08-11', '08:15:00', 'Credit Card', 'REF-20260801-001'),
+(5002, 'MEM102', 'AD-001', 'SUB1002', 14500.00, '2026-09-05', '10:30:00', 'Credit Card', 'REF-20260905-002'),
+(5003, 'MEM103', 'AD-001', 'SUB1003', 4000.00, '2026-10-10', '14:20:00', 'Debit Card', 'REF-20261010-003'),
+(5004, 'MEM104', 'AD-001', 'SUB1004', 14500.00, '2026-06-12', '11:05:00', 'Credit Card', 'REF-20260612-004'),
+(5005, 'MEM105', 'AD-001', 'SUB1005', 1500.00, '2026-11-01', '16:45:00', 'Cash', 'OR-20261101-005'),
+(5006, 'MEM106', 'AD-001', 'SUB1006', 4000.00, '2026-09-15', '09:50:00', 'Credit Card', 'REF-20260915-006'),
+(5007, 'MEM107', 'AD-001', 'SUB1007', 1500.00, '2026-11-03', '13:10:00', 'GCash', 'GC-9012837465'),
+(5008, 'MEM108', 'AD-001', 'SUB1008', 14500.00, '2026-07-20', '15:00:00', 'Credit Card', 'REF-20260720-008'),
+(5009, 'MEM109', 'AD-001', 'SUB1009', 1500.00, '2026-09-01', '12:30:00', 'Cash', 'OR-20260901-009'),
+(5010, 'MEM110', 'AD-001', 'SUB1010', 14500.00, '2026-10-08', '09:00:00', 'Debit Card', 'REF-20261008-010'),
+(5011, 'MEM111', 'AD-001', 'SUB1011', 4000.00, '2026-10-18', '17:15:00', 'Credit Card', 'REF-20261018-011'),
+(5012, 'MEM112', 'AD-001', 'SUB1012', 14500.00, '2026-05-22', '10:40:00', 'Credit Card', 'REF-20260522-012'),
+(5013, 'MEM113', 'AD-001', 'SUB1013', 1500.00, '2026-11-05', '11:25:00', 'Maya', 'MY-8473625190'),
+(5014, 'MEM114', 'AD-001', 'SUB1014', 4000.00, '2026-09-25', '14:25:00', 'Debit Card', 'REF-20260925-014'),
+(5015, 'MEM115', 'AD-001', 'SUB1015', 1500.00, '2026-11-10', '16:05:00', 'GCash', 'GC-7362519480'),
+(5016, 'MEM109', 'AD-001', 'SUB1009', 1500.00, '2026-11-22', '17:57:56', 'Cash', 'OR-20261122-016');
 
 -- --------------------------------------------------------
 
@@ -378,7 +440,7 @@ INSERT INTO `progress` (`RecordID`, `MemberID`, `Date`, `Height`, `Weight`) VALU
 ('REC907', 'MEM110', '2026-10-08', 170.00, 52.00),
 ('REC908', 'MEM110', '2026-11-08', 170.00, 52.40),
 ('REC909', 'MEM111', '2026-10-18', 160.00, 49.50),
-('REC910', 'MEM111', '2026-11-12', 160.00, 48.90);
+('REC910', 'MEM111', '2026-11-12', 159.99, 48.92);
 
 -- --------------------------------------------------------
 
@@ -408,7 +470,7 @@ INSERT INTO `subscription` (`SubscriptionID`, `MemberID`, `PlanID`, `StartDate`,
 ('SUB1006', 'MEM106', 'PLN02', '2026-09-15', '2026-12-14', 'Active'),
 ('SUB1007', 'MEM107', 'PLN01', '2026-11-03', '2026-12-03', 'Active'),
 ('SUB1008', 'MEM108', 'PLN03', '2026-07-20', '2027-07-20', 'Active'),
-('SUB1009', 'MEM109', 'PLN01', '2026-09-01', '2026-10-01', 'Expired'),
+('SUB1009', 'MEM109', 'PLN01', '2026-09-01', '2026-10-01', 'Active'),
 ('SUB1010', 'MEM110', 'PLN03', '2026-10-08', '2027-10-08', 'Active'),
 ('SUB1011', 'MEM111', 'PLN02', '2026-10-18', '2027-01-16', 'Active'),
 ('SUB1012', 'MEM112', 'PLN03', '2026-05-22', '2027-05-22', 'Active'),
@@ -434,7 +496,8 @@ CREATE TABLE `system_access` (
 --
 
 INSERT INTO `system_access` (`StaffID`, `Username`, `Password`, `Role`) VALUES
-('AD-001', 'kit', '$2y$10$xB46m.k2b4ZJknfvEAl48ez43qP3K9POqdMIPwhJ5qDJY7TTzrDbu', 'Admin');
+('AD-001', 'kit', '$2y$10$xB46m.k2b4ZJknfvEAl48ez43qP3K9POqdMIPwhJ5qDJY7TTzrDbu', 'Admin'),
+('AD-002', 'admin', '$2y$10$/G2M8yuX7YRvT78sPY4wrOA9MGI2HwMZRNGpUia3iY/UBs4KCntea', 'Admin');
 
 -- --------------------------------------------------------
 
@@ -456,7 +519,25 @@ INSERT INTO `trainer` (`StaffID`, `Certification`) VALUES
 ('TRN-002', 'ACE Master Fitness Specialist'),
 ('TRN-005', 'CSCS (Certified Strength & Conditioning Specialist'),
 ('TRN-006', 'PMA-CPT Certified Pilates Master'),
-('TRN-007', 'IFBB Pro Coach & NSCA-CPT');
+('TRN-007', 'IFBB Pro Coach & NSCA-CPT'),
+('TRN-008', 'Certified Fitness Coach');
+
+-- --------------------------------------------------------
+
+--
+-- Stand-in structure for view `vw_member_subscriptions`
+-- (See below for the actual view)
+--
+CREATE TABLE `vw_member_subscriptions` (
+`MemberID` varchar(15)
+,`FirstName` varchar(50)
+,`LastName` varchar(50)
+,`PlanName` varchar(50)
+,`Price` decimal(10,2)
+,`StartDate` date
+,`EndDate` date
+,`Status` varchar(20)
+);
 
 --
 -- Indexes for dumped tables
@@ -573,7 +654,22 @@ ALTER TABLE `trainer`
 -- AUTO_INCREMENT for table `login_history`
 --
 ALTER TABLE `login_history`
-  MODIFY `LoginID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `LoginID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
+
+--
+-- AUTO_INCREMENT for table `payment`
+--
+ALTER TABLE `payment`
+  MODIFY `PaymentID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5017;
+
+-- --------------------------------------------------------
+
+--
+-- Structure for view `vw_member_subscriptions`
+--
+DROP TABLE IF EXISTS `vw_member_subscriptions`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `vw_member_subscriptions`  AS SELECT `m`.`MemberID` AS `MemberID`, `m`.`FirstName` AS `FirstName`, `m`.`LastName` AS `LastName`, `p`.`PlanName` AS `PlanName`, `p`.`Price` AS `Price`, `s`.`StartDate` AS `StartDate`, `s`.`EndDate` AS `EndDate`, `s`.`Status` AS `Status` FROM ((`gym_member` `m` join `subscription` `s` on(`s`.`MemberID` = `m`.`MemberID`)) join `membership_plan` `p` on(`p`.`PlanID` = `s`.`PlanID`)) ORDER BY `p`.`Price` ASC, `m`.`MemberID` ASC ;
 
 --
 -- Constraints for dumped tables
