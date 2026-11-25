@@ -53,7 +53,7 @@ include __DIR__ . '/../includes/header.php';
     <form method="GET" style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
         <div class="form-group" style="margin:0;"><label>Start Date</label><input type="date" name="start_date"></div>
         <div class="form-group" style="margin:0;"><label>End Date</label><input type="date" name="end_date"></div>
-        <button type="button" class="btn btn-primary">Filter Report</button>
+        <button type="submit" class="btn btn-primary">Filter Report</button>
     </form>
 </div>
 
