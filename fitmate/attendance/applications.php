@@ -2,9 +2,19 @@
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth_check.php';
 
+if (session_status() === PHP_SESSION_NONE) session_start();
+date_default_timezone_set('Asia/Manila');
+
 $page_title = "Program Applications";
 $msg = '';
 $err = '';
+
+// Show flash message after redirect (prevents form re-submit on refresh)
+if (!empty($_SESSION['app_flash'])) {
+    [$type, $text] = $_SESSION['app_flash'];
+    if ($type === 'ok') $msg = $text; else $err = $text;
+    unset($_SESSION['app_flash']);
+}
 
 // 1. SUBMIT NEW PROGRAM APPLICATION
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'apply_program') {
@@ -17,11 +27,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         try {
             $chk = $pdo->prepare("SELECT MemberID FROM gym_member WHERE MemberID = ? AND is_archived = 0");
             $chk->execute([$memberId]);
+            $pchk = $pdo->prepare("SELECT 1 FROM program WHERE ProgramID = ?");
+            $pchk->execute([$programId]);
+
+            $dup = $pdo->prepare("SELECT 1 FROM application WHERE MemberID = ? AND ProgramID = ? AND Status IN ('Pending','Approved') LIMIT 1");
+            $dup->execute([$memberId, $programId]);
+
             if (!$chk->fetch()) {
                 $err = "Member ID ($memberId) not found or is currently archived.";
+            } elseif (!$pchk->fetchColumn()) {
+                $err = "Selected program does not exist.";
+            } elseif ($dup->fetchColumn()) {
+                $err = "$memberId already has a Pending or Approved application for this program.";
             } else {
-                // Generate next ApplicationID (e.g., APP316)
-                $lastApp = $pdo->query("SELECT ApplicationID FROM application ORDER BY ApplicationID DESC LIMIT 1")->fetchColumn();
+                // Generate next ApplicationID (e.g., APP316) using the highest NUMBER, not string order
+                $lastApp = $pdo->query("SELECT ApplicationID FROM application ORDER BY CAST(SUBSTRING(ApplicationID, 4) AS UNSIGNED) DESC LIMIT 1")->fetchColumn();
                 if ($lastApp && preg_match('/(\d+)$/', $lastApp, $matches)) {
                     $nextNum = (int)$matches[1] + 1;
                     $newAppId = 'APP' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
@@ -34,7 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     VALUES (?, ?, ?, CURDATE(), 'Pending')
                 ");
                 $stmt->execute([$newAppId, $memberId, $programId]);
-                $msg = "Program application ($newAppId) submitted for $memberId!";
+                $_SESSION['app_flash'] = ['ok', "Program application ($newAppId) submitted for $memberId!"];
+                header('Location: applications.php');
+                exit;
             }
         } catch (PDOException $e) {
             $err = "Error submitting application: " . $e->getMessage();
@@ -49,9 +71,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     if (in_array($newStatus, ['Approved', 'Cancelled', 'Rejected'], true)) {
         try {
-            $stmt = $pdo->prepare("UPDATE application SET Status = ? WHERE ApplicationID = ?");
+            $stmt = $pdo->prepare("UPDATE application SET Status = ? WHERE ApplicationID = ? AND Status = 'Pending'");
             $stmt->execute([$newStatus, $appId]);
-            $msg = "Application ($appId) status updated to $newStatus!";
+            $_SESSION['app_flash'] = $stmt->rowCount()
+                ? ['ok', "Application ($appId) status updated to $newStatus!"]
+                : ['err', "Application ($appId) is no longer Pending, so it can't be changed."];
+            header('Location: applications.php');
+            exit;
         } catch (PDOException $e) {
             $err = "Error updating status: " . $e->getMessage();
         }
@@ -69,7 +95,7 @@ $applications = $pdo->query("
     FROM application a
     JOIN gym_member m ON a.MemberID = m.MemberID
     JOIN program p ON a.ProgramID = p.ProgramID
-    ORDER BY a.ApplicationID DESC
+    ORDER BY CAST(SUBSTRING(a.ApplicationID, 4) AS UNSIGNED) DESC
 ")->fetchAll();
 
 include __DIR__ . '/../includes/header.php';
@@ -224,6 +250,7 @@ include __DIR__ . '/../includes/header.php';
             <div class="form-group">
                 <label>Select Program (Live from DB)</label>
                 <select name="program_id" required>
+                    <option value="" disabled selected>-- Select a program --</option>
                     <?php foreach ($programs as $prog): ?>
                         <option value="<?= htmlspecialchars($prog['ProgramID']) ?>">
                             <?= htmlspecialchars($prog['ProgramName']) ?>
@@ -274,6 +301,9 @@ include __DIR__ . '/../includes/header.php';
                             <td style="width: 12%;"><?= htmlspecialchars($app['ApplicationDate']) ?></td>
                             <td style="width: 11%;"><span class="<?= $badgeClass ?>"><?= htmlspecialchars($status) ?></span></td>
                             <td style="width: 23%;">
+                                <?php if ($status !== 'Pending'): ?>
+                                    <span style="opacity:.5;">Done</span>
+                                <?php else: ?>
                                 <div class="action-btns">
                                     <form method="POST" style="display:inline;">
                                         <input type="hidden" name="action" value="update_status">
@@ -291,9 +321,10 @@ include __DIR__ . '/../includes/header.php';
                                         <input type="hidden" name="action" value="update_status">
                                         <input type="hidden" name="application_id" value="<?= htmlspecialchars($app['ApplicationID']) ?>">
                                         <input type="hidden" name="new_status" value="Rejected">
-                                        <button type="submit" class="btn-xs btn-rejected">Rejected</button>
+                                        <button type="submit" class="btn-xs btn-rejected">Reject</button>
                                     </form>
                                 </div>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
