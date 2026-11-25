@@ -2,96 +2,74 @@
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth_check.php';
 
-$page_title = "Attendance Dashboard";
+$page_title = "Program Applications";
 $msg = '';
 $err = '';
 
-$fmtTime = fn($t) => ($t && $t !== '00:00:00') ? date('g:i A', strtotime($t)) : '—';
-$fmtDur  = fn($m) => $m === null ? '—' : intdiv((int)$m, 60) . 'h ' . str_pad((string)((int)$m % 60), 2, '0', STR_PAD_LEFT) . 'm';
+// 1. SUBMIT NEW PROGRAM APPLICATION
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'apply_program') {
+    $memberId  = strtoupper(trim($_POST['member_id'] ?? ''));
+    $programId = $_POST['program_id'] ?? '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'check_in') {
-    $memberId = strtoupper(trim($_POST['member_id'] ?? ''));
-
-    if ($memberId === '') {
-        $err = "Please enter a Member ID.";
+    if ($memberId === '' || $programId === '') {
+        $err = "Please enter a Member ID and select a Program.";
     } else {
         try {
-            $chk = $pdo->prepare("SELECT FirstName, LastName FROM gym_member WHERE MemberID = ? AND is_archived = 0");
+            $chk = $pdo->prepare("SELECT MemberID FROM gym_member WHERE MemberID = ? AND is_archived = 0");
             $chk->execute([$memberId]);
-            $member = $chk->fetch();
-
-            if (!$member) {
+            if (!$chk->fetch()) {
                 $err = "Member ID ($memberId) not found or is currently archived.";
             } else {
-                $sub = $pdo->prepare("SELECT 1 FROM subscription WHERE MemberID = ? AND Status = 'Active' AND EndDate >= CURDATE() LIMIT 1");
-                $sub->execute([$memberId]);
-
-                $open = $pdo->prepare("SELECT 1 FROM attendance WHERE MemberID = ? AND Date = CURDATE() AND (TimeOut IS NULL OR TimeOut = '00:00:00') LIMIT 1");
-                $open->execute([$memberId]);
-
-                if (!$sub->fetchColumn()) {
-                    $err = $member['FirstName'] . " has no active subscription. Check-in denied.";
-                } elseif ($open->fetchColumn()) {
-                    $err = $member['FirstName'] . " is already checked in.";
+                // Generate next ApplicationID (e.g., APP316)
+                $lastApp = $pdo->query("SELECT ApplicationID FROM application ORDER BY ApplicationID DESC LIMIT 1")->fetchColumn();
+                if ($lastApp && preg_match('/(\d+)$/', $lastApp, $matches)) {
+                    $nextNum = (int)$matches[1] + 1;
+                    $newAppId = 'APP' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
                 } else {
-                    $lastAtt = $pdo->query("SELECT AttendanceID FROM attendance ORDER BY AttendanceID DESC LIMIT 1")->fetchColumn();
-                    if ($lastAtt && preg_match('/(\d+)$/', $lastAtt, $matches)) {
-                        $newAttId = 'ATT' . ((int)$matches[1] + 1);
-                    } else {
-                        $newAttId = 'ATT8001';
-                    }
-
-                    $stmt = $pdo->prepare("
-                        INSERT INTO attendance (AttendanceID, MemberID, Date, TimeIn, TimeOut)
-                        VALUES (?, ?, CURDATE(), CURTIME(), '00:00:00')
-                    ");
-                    $stmt->execute([$newAttId, $memberId]);
-                    $msg = "Welcome, " . $member['FirstName'] . "! Checked in ($newAttId).";
+                    $newAppId = 'APP301';
                 }
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO application (ApplicationID, MemberID, ProgramID, ApplicationDate, Status)
+                    VALUES (?, ?, ?, CURDATE(), 'Pending')
+                ");
+                $stmt->execute([$newAppId, $memberId, $programId]);
+                $msg = "Program application ($newAppId) submitted for $memberId!";
             }
         } catch (PDOException $e) {
-            $err = "Error checking in: " . $e->getMessage();
+            $err = "Error submitting application: " . $e->getMessage();
         }
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'check_out') {
-    $attId = $_POST['attendance_id'] ?? '';
-    try {
-        $stmt = $pdo->prepare("UPDATE attendance SET TimeOut = CURTIME() WHERE AttendanceID = ? AND (TimeOut IS NULL OR TimeOut = '00:00:00')");
-        $stmt->execute([$attId]);
-        if ($stmt->rowCount()) {
-            $msg = "Attendance ($attId) checked out!";
-        } else {
-            $err = "That session is already closed.";
+// 2. UPDATE APPLICATION STATUS (Approve, Cancel, Rejected)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_status') {
+    $appId     = $_POST['application_id'] ?? '';
+    $newStatus = $_POST['new_status'] ?? '';
+
+    if (in_array($newStatus, ['Approved', 'Cancelled', 'Rejected'], true)) {
+        try {
+            $stmt = $pdo->prepare("UPDATE application SET Status = ? WHERE ApplicationID = ?");
+            $stmt->execute([$newStatus, $appId]);
+            $msg = "Application ($appId) status updated to $newStatus!";
+        } catch (PDOException $e) {
+            $err = "Error updating status: " . $e->getMessage();
         }
-    } catch (PDOException $e) {
-        $err = "Error checking out: " . $e->getMessage();
     }
 }
 
-$stats = $pdo->query("
-    SELECT COUNT(*) AS total,
-           COALESCE(SUM(TimeOut IS NULL OR TimeOut = '00:00:00'), 0) AS inside
-    FROM attendance WHERE Date = CURDATE()
-")->fetch();
+// 3. FETCH PROGRAMS FOR DROPDOWN
+$programs = $pdo->query("SELECT ProgramID, ProgramName FROM program ORDER BY ProgramName ASC")->fetchAll();
 
-$expiring = (int)$pdo->query("
-    SELECT COUNT(*) FROM subscription
-    WHERE Status = 'Active' AND EndDate BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-")->fetchColumn();
-
-$records = $pdo->query("
-    SELECT a.AttendanceID, a.MemberID, a.TimeIn, a.TimeOut,
+// 4. FETCH PROGRAM APPLICATION LIST (gamit ang tamang column na ApplicationDate)
+$applications = $pdo->query("
+    SELECT a.ApplicationID, a.MemberID, a.ApplicationDate, a.Status,
            CONCAT(m.FirstName, ' ', m.LastName) AS MemberName,
-           (a.TimeOut IS NULL OR a.TimeOut = '00:00:00') AS is_open,
-           TIMESTAMPDIFF(MINUTE, CONCAT(a.Date, ' ', a.TimeIn),
-               CASE WHEN a.TimeOut IS NULL OR a.TimeOut = '00:00:00' THEN NOW()
-                    ELSE CONCAT(a.Date, ' ', a.TimeOut) END) AS mins
-    FROM attendance a
+           p.ProgramName
+    FROM application a
     JOIN gym_member m ON a.MemberID = m.MemberID
-    WHERE a.Date = CURDATE()
-    ORDER BY is_open DESC, a.TimeIn DESC
+    JOIN program p ON a.ProgramID = p.ProgramID
+    ORDER BY a.ApplicationID DESC
 ")->fetchAll();
 
 include __DIR__ . '/../includes/header.php';
@@ -115,19 +93,6 @@ include __DIR__ . '/../includes/header.php';
         gap: 14px !important;
     }
 
-    .stats-row {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 14px;
-        flex-shrink: 0;
-    }
-    .stats-row .card {
-        margin-bottom: 0 !important;
-        padding: 14px 18px !important;
-    }
-    .stat-num { font-size: 26px; font-weight: 700; color: #f1f5f9; line-height: 1.1; }
-    .stat-lbl { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-
     .apps-grid {
         flex: 1 !important;
         display: grid !important;
@@ -144,6 +109,7 @@ include __DIR__ . '/../includes/header.php';
         overflow: hidden !important;
     }
 
+    /* FIXED TABLE HEADER + SCROLLABLE TBODY */
     .fixed-table-wrap {
         border: 1px solid #1e293b;
         border-radius: 8px;
@@ -199,13 +165,26 @@ include __DIR__ . '/../includes/header.php';
         background: rgba(37, 99, 235, 0.08);
     }
 
+    /* Status Badges (Approved = Green, Pending = Amber, Cancelled = Gray, Rejected = RED) */
     .badge-red {
         background: rgba(220, 38, 38, 0.22) !important;
         color: #fca5a5 !important;
         border: 1px solid #ef4444 !important;
     }
+    .badge-gray {
+        background: rgba(100, 116, 139, 0.22) !important;
+        color: #cbd5e1 !important;
+        border: 1px solid #64748b !important;
+    }
+
+    /* Action Buttons sa loob ng table */
+    .action-btns {
+        display: flex;
+        gap: 4px;
+        flex-wrap: nowrap;
+    }
     .btn-xs {
-        padding: 4px 9px;
+        padding: 4px 7px;
         font-size: 11px;
         font-weight: 600;
         border-radius: 5px;
@@ -213,6 +192,10 @@ include __DIR__ . '/../includes/header.php';
         cursor: pointer;
         color: #ffffff;
     }
+    .btn-approve  { background: #16a34a; }
+    .btn-approve:hover  { background: #15803d; }
+    .btn-cancel   { background: #475569; }
+    .btn-cancel:hover   { background: #334155; }
     .btn-rejected { background: #dc2626; }
     .btn-rejected:hover { background: #b91c1c; }
 </style>
@@ -228,72 +211,89 @@ include __DIR__ . '/../includes/header.php';
     </div>
 <?php endif; ?>
 
-<div class="stats-row">
-    <div class="card">
-        <div class="stat-num"><?= (int)$stats['total'] ?></div>
-        <div class="stat-lbl">Check-ins Today</div>
-    </div>
-    <div class="card">
-        <div class="stat-num"><?= (int)$stats['inside'] ?></div>
-        <div class="stat-lbl">Currently Inside</div>
-    </div>
-    <div class="card">
-        <div class="stat-num"><?= $expiring ?></div>
-        <div class="stat-lbl">Subscriptions Expiring in 7 Days</div>
-    </div>
-</div>
-
 <div class="apps-grid">
+    <!-- LEFT CARD: APPLY MEMBER TO PROGRAM -->
     <div class="card" style="height: fit-content;">
-        <h3 style="margin-bottom: 14px;">Member Check-In</h3>
+        <h3 style="margin-bottom: 14px;">Apply Member to Program</h3>
         <form method="POST">
-            <input type="hidden" name="action" value="check_in">
+            <input type="hidden" name="action" value="apply_program">
             <div class="form-group">
                 <label>Member ID</label>
-                <input type="text" name="member_id" required placeholder="e.g. MEM101" autofocus>
+                <input type="text" name="member_id" required placeholder="e.g. MEM101">
+            </div>
+            <div class="form-group">
+                <label>Select Program (Live from DB)</label>
+                <select name="program_id" required>
+                    <?php foreach ($programs as $prog): ?>
+                        <option value="<?= htmlspecialchars($prog['ProgramID']) ?>">
+                            <?= htmlspecialchars($prog['ProgramName']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 6px; padding: 10px;">
-                Check In
+                Submit Application
             </button>
         </form>
     </div>
 
+    <!-- RIGHT CARD: PROGRAM APPLICATION LIST -->
     <div class="card">
-        <h3 style="margin-bottom: 12px; flex-shrink: 0;">Today's Attendance (<?= count($records) ?> Records)</h3>
+        <h3 style="margin-bottom: 12px; flex-shrink: 0;">Program Application List (<?= count($applications) ?> Records)</h3>
 
         <div class="fixed-table-wrap">
             <table class="fixed-table">
                 <thead>
                     <tr>
-                        <th style="width: 11%;">Att ID</th>
-                        <th style="width: 25%;">Member</th>
-                        <th style="width: 13%;">Time In</th>
-                        <th style="width: 13%;">Time Out</th>
-                        <th style="width: 13%;">Duration</th>
-                        <th style="width: 25%;">Status</th>
+                        <th style="width: 10%;">App ID</th>
+                        <th style="width: 18%;">Member</th>
+                        <th style="width: 26%;">Program</th>
+                        <th style="width: 12%;">Date Applied</th>
+                        <th style="width: 11%;">Status</th>
+                        <th style="width: 23%;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($records)): ?>
-                        <tr><td colspan="6">No attendance recorded today.</td></tr>
-                    <?php else: foreach ($records as $r): ?>
+                    <?php if (empty($applications)): ?>
+                        <tr><td colspan="6">No program applications found.</td></tr>
+                    <?php else: foreach ($applications as $app):
+                        $status = $app['Status'] ?? 'Pending';
+                        $badgeClass = 'badge badge-amber'; // Pending
+                        if ($status === 'Approved') {
+                            $badgeClass = 'badge badge-green';
+                        } elseif ($status === 'Rejected') {
+                            $badgeClass = 'badge badge-red';
+                        } elseif ($status === 'Cancelled') {
+                            $badgeClass = 'badge badge-gray';
+                        }
+                    ?>
                         <tr>
-                            <td style="width: 11%;"><strong><?= htmlspecialchars($r['AttendanceID']) ?></strong></td>
-                            <td style="width: 25%;"><?= htmlspecialchars($r['MemberName']) ?></td>
-                            <td style="width: 13%;"><?= $fmtTime($r['TimeIn']) ?></td>
-                            <td style="width: 13%;"><?= $fmtTime($r['TimeOut']) ?></td>
-                            <td style="width: 13%;"><?= $fmtDur($r['mins']) ?></td>
-                            <td style="width: 25%;">
-                                <?php if ($r['is_open']): ?>
-                                    <form method="POST" style="display:flex; align-items:center; gap:8px;">
-                                        <span class="badge badge-amber">Inside</span>
-                                        <input type="hidden" name="action" value="check_out">
-                                        <input type="hidden" name="attendance_id" value="<?= htmlspecialchars($r['AttendanceID']) ?>">
-                                        <button type="submit" class="btn-xs btn-rejected">Check Out</button>
+                            <td style="width: 10%;"><strong><?= htmlspecialchars($app['ApplicationID']) ?></strong></td>
+                            <td style="width: 18%;"><?= htmlspecialchars($app['MemberName']) ?></td>
+                            <td style="width: 26%;"><?= htmlspecialchars($app['ProgramName']) ?></td>
+                            <td style="width: 12%;"><?= htmlspecialchars($app['ApplicationDate']) ?></td>
+                            <td style="width: 11%;"><span class="<?= $badgeClass ?>"><?= htmlspecialchars($status) ?></span></td>
+                            <td style="width: 23%;">
+                                <div class="action-btns">
+                                    <form method="POST" style="display:inline;">
+                                        <input type="hidden" name="action" value="update_status">
+                                        <input type="hidden" name="application_id" value="<?= htmlspecialchars($app['ApplicationID']) ?>">
+                                        <input type="hidden" name="new_status" value="Approved">
+                                        <button type="submit" class="btn-xs btn-approve">Approve</button>
                                     </form>
-                                <?php else: ?>
-                                    <span class="badge badge-green">Completed</span>
-                                <?php endif; ?>
+                                    <form method="POST" style="display:inline;">
+                                        <input type="hidden" name="action" value="update_status">
+                                        <input type="hidden" name="application_id" value="<?= htmlspecialchars($app['ApplicationID']) ?>">
+                                        <input type="hidden" name="new_status" value="Cancelled">
+                                        <button type="submit" class="btn-xs btn-cancel">Cancel</button>
+                                    </form>
+                                    <form method="POST" style="display:inline;">
+                                        <input type="hidden" name="action" value="update_status">
+                                        <input type="hidden" name="application_id" value="<?= htmlspecialchars($app['ApplicationID']) ?>">
+                                        <input type="hidden" name="new_status" value="Rejected">
+                                        <button type="submit" class="btn-xs btn-rejected">Rejected</button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
