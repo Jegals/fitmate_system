@@ -14,7 +14,7 @@ function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 
 function next_att_id(PDO $pdo) {
     $max = $pdo->query("SELECT MAX(CAST(SUBSTRING(AttendanceID, 4) AS UNSIGNED)) FROM attendance")->fetchColumn();
-    return 'ATT' . ((int)$max + 1);
+    return 'ATT' . str_pad((string)((int)$max + 1), 3, '0', STR_PAD_LEFT);
 }
 
 function member_status(PDO $pdo, $memberId) {
@@ -42,8 +42,8 @@ function member_status(PDO $pdo, $memberId) {
 }
 
 function is_inside(PDO $pdo, $memberId) {
-    $st = $pdo->prepare("SELECT 1 FROM attendance WHERE MemberID = ? AND TimeOut IS NULL LIMIT 1");
-    $st->execute([$memberId]);
+    $st = $pdo->prepare("SELECT 1 FROM attendance WHERE MemberID = ? AND Date = ? AND TimeOut IS NULL LIMIT 1");
+    $st->execute([$memberId, date('Y-m-d')]);
     return (bool)$st->fetchColumn();
 }
 
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'timein') {
-        $mid = trim($_POST['member_id'] ?? '');
+        $mid = strtoupper(trim($_POST['member_id'] ?? ''));
         $chk = $pdo->prepare("SELECT MemberID FROM gym_member WHERE MemberID = ? AND is_archived = 0");
         $chk->execute([$mid]);
 
@@ -78,7 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['flash'] = $upd->rowCount() ? ['ok', 'Time-Out recorded.'] : ['err', 'Already timed out.'];
     }
 
-    header('Location: logs.php');
+    $back = trim($_POST['back_q'] ?? '');
+    header('Location: logs.php' . ($back !== '' ? '?q=' . urlencode($back) : ''));
     exit;
 }
 
@@ -91,10 +92,10 @@ if ($q !== '') {
     $st = $pdo->prepare("
         SELECT MemberID, FirstName, LastName FROM gym_member
         WHERE is_archived = 0
-          AND (MemberID LIKE :q OR CONCAT(FirstName, ' ', LastName) LIKE :q)
+          AND (MemberID LIKE :q1 OR CONCAT(FirstName, ' ', LastName) LIKE :q2)
         ORDER BY FirstName LIMIT 10
     ");
-    $st->execute([':q' => "%$q%"]);
+    $st->execute([':q1' => "%$q%", ':q2' => "%$q%"]);
     foreach ($st->fetchAll() as $m) {
         $m['info']   = member_status($pdo, $m['MemberID']);
         $m['inside'] = is_inside($pdo, $m['MemberID']);
@@ -115,10 +116,11 @@ if ($fDate !== '') {
     $params[':d'] = $fDate;
 }
 if ($fMember !== '') {
-    $sql .= " AND (a.MemberID LIKE :m OR CONCAT(m.FirstName, ' ', m.LastName) LIKE :m)";
-    $params[':m'] = "%$fMember%";
+    $sql .= " AND (a.MemberID LIKE :m1 OR CONCAT(m.FirstName, ' ', m.LastName) LIKE :m2)";
+    $params[':m1'] = "%$fMember%";
+    $params[':m2'] = "%$fMember%";
 }
-$sql .= " ORDER BY a.AttendanceID DESC LIMIT 100";
+$sql .= " ORDER BY a.Date DESC, a.TimeIn DESC, CAST(SUBSTRING(a.AttendanceID, 4) AS UNSIGNED) DESC LIMIT 100";
 $st = $pdo->prepare($sql);
 $st->execute($params);
 $logs = $st->fetchAll();
@@ -181,6 +183,7 @@ include __DIR__ . '/../includes/header.php';
                         <form method="POST" style="margin-top:10px;">
                             <input type="hidden" name="action" value="timein">
                             <input type="hidden" name="member_id" value="<?= h($m['MemberID']) ?>">
+                            <input type="hidden" name="back_q" value="<?= h($q) ?>">
                             <?php $off = ($blocked || $m['inside']); ?>
                             <button type="submit" class="btn btn-success"
                                 style="width:100%;<?= $off ? ' opacity:.5; cursor:not-allowed;' : '' ?>"
@@ -202,8 +205,8 @@ include __DIR__ . '/../includes/header.php';
 
         <form method="GET" style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
             <input type="date" name="date" value="<?= h($fDate) ?>">
-            <input type="text" name="member" value="<?= h($fMember) ?>" placeholder="Filter by member ID or name">
-            <button type="submit" class="btn btn-success btn-sm">Filter</button>
+            <input type="text" name="member" value="<?= h($fMember) ?>" placeholder="Search by member ID or name">
+            <button type="submit" class="btn btn-success btn-sm">Search</button>
             <a href="logs.php" class="btn btn-sm" style="text-decoration:none;">Today</a>
         </form>
 
