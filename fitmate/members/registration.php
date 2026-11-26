@@ -3,67 +3,301 @@ require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth_check.php';
 
 $page_title = "Member Registration";
-$plans = $pdo->query("SELECT * FROM membership_plan ORDER BY Price ASC")->fetchAll();
+$message = '';
+$error = '';
 
-// TODO [Member 2]: Add INSERT transaction for GYM_MEMBER (PhoneNumber), EMERGENCY_CONTACT (PhoneNumber), SUBSCRIPTION, and PAYMENT
+// Helper function to auto-generate prefixed IDs (e.g., MEM101, EMG401, SUB1001)
+function getNextPrefixedId(PDO $pdo, string $table, string $column, string $prefix, int $startAt): string {
+    $prefixLen = strlen($prefix) + 1;
+    $stmt = $pdo->query("
+        SELECT {$column}
+        FROM {$table}
+        WHERE {$column} REGEXP '^{$prefix}[0-9]+$'
+        ORDER BY CAST(SUBSTRING({$column}, {$prefixLen}) AS UNSIGNED) DESC
+        LIMIT 1
+    ");
+    $lastId = $stmt->fetchColumn();
+    $nextNum = $lastId ? ((int)substr($lastId, strlen($prefix)) + 1) : $startAt;
+    return $prefix . $nextNum;
+}
+
+$plans = $pdo->query("SELECT PlanID, PlanName, DurationDays, Price FROM membership_plan ORDER BY Price ASC")->fetchAll(PDO::FETCH_ASSOC);
+
+// Only Admin and Manager can process registration (exclude Maintenance and Trainer)
+$staffList = $pdo->query("
+    SELECT StaffID, FirstName, LastName, StaffType
+    FROM gym_staff
+    WHERE StaffType IN ('Admin', 'Manager')
+    ORDER BY StaffID ASC
+")->fetchAll(PDO::FETCH_ASSOC);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $firstName = trim($_POST['FirstName'] ?? '');
+    $lastName  = trim($_POST['LastName'] ?? '');
+    $dob       = trim($_POST['DateOfBirth'] ?? '');
+    $phone     = trim($_POST['PhoneNumber'] ?? '');
+
+    $contactName  = trim($_POST['ContactName'] ?? '');
+    $relationship = trim($_POST['Relationship'] ?? '');
+    $contactPhone = trim($_POST['ContactPhone'] ?? '');
+
+    $planId        = trim($_POST['PlanID'] ?? '');
+    $staffId       = trim($_POST['StaffID'] ?? '');
+    $amount        = (float)($_POST['Amount'] ?? 0);
+    $paymentMethod = trim($_POST['PaymentMethod'] ?? 'Cash');
+    $refNumber     = trim($_POST['ReferenceNumber'] ?? '');
+
+    $stmtPlan = $pdo->prepare("SELECT PlanID, DurationDays, Price FROM membership_plan WHERE PlanID = ?");
+    $stmtPlan->execute([$planId]);
+    $planData = $stmtPlan->fetch(PDO::FETCH_ASSOC);
+
+    // Verify selected staff is Admin or Manager
+    $stmtStaffCheck = $pdo->prepare("SELECT 1 FROM gym_staff WHERE StaffID = ? AND StaffType IN ('Admin', 'Manager')");
+    $stmtStaffCheck->execute([$staffId]);
+    $validStaff = (bool)$stmtStaffCheck->fetchColumn();
+
+    if (
+        !$firstName || !$lastName || !$dob || !$phone ||
+        !$contactName || !$relationship || !$contactPhone ||
+        !$planData || !$validStaff || $amount <= 0
+    ) {
+        $error = "Please fill in all required fields, select an Admin or Manager, and enter a valid payment amount.";
+    } else {
+        $days = (int)$planData['DurationDays'];
+        if ($days <= 0) {
+            $days = 30;
+        }
+
+        $startDate   = date('Y-m-d');
+        $endDate     = date('Y-m-d', strtotime("+{$days} days"));
+        $paymentDate = date('Y-m-d');
+        $paymentTime = date('H:i:s');
+        $subStatus   = 'Active';
+
+        if ($refNumber === '') {
+            $refNumber = 'REF-' . date('YmdHis') . '-' . rand(100, 999);
+        }
+
+        $pdo->beginTransaction();
+
+        try {
+            $memberId       = getNextPrefixedId($pdo, 'gym_member', 'MemberID', 'MEM', 101);
+            $contactId      = getNextPrefixedId($pdo, 'emergency_contact', 'ContactID', 'EMG', 401);
+            $subscriptionId = getNextPrefixedId($pdo, 'subscription', 'SubscriptionID', 'SUB', 1001);
+
+            $resPayId  = $pdo->query("SELECT COALESCE(MAX(PaymentID), 5000) + 1 FROM payment");
+            $paymentId = (int)$resPayId->fetchColumn();
+
+            // 1. gym_member
+            $stmtMember = $pdo->prepare("
+                INSERT INTO gym_member (MemberID, FirstName, LastName, DateOfBirth, PhoneNumber, is_archived)
+                VALUES (?, ?, ?, ?, ?, 0)
+            ");
+            $stmtMember->execute([$memberId, $firstName, $lastName, $dob, $phone]);
+
+            // 2. emergency_contact
+            $stmtContact = $pdo->prepare("
+                INSERT INTO emergency_contact (ContactID, MemberID, ContactName, Relationship, PhoneNumber)
+                VALUES (?, ?, ?, ?, ?)
+            ");
+            $stmtContact->execute([$contactId, $memberId, $contactName, $relationship, $contactPhone]);
+
+            // 3. subscription
+            $stmtSub = $pdo->prepare("
+                INSERT INTO subscription (SubscriptionID, MemberID, PlanID, StartDate, EndDate, Status)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmtSub->execute([$subscriptionId, $memberId, $planId, $startDate, $endDate, $subStatus]);
+
+            // 4. payment
+            $stmtPay = $pdo->prepare("
+                INSERT INTO payment (PaymentID, MemberID, StaffID, SubscriptionID, Amount, PaymentDate, PaymentTime, PaymentMethod, ReferenceNumber)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmtPay->execute([
+                $paymentId,
+                $memberId,
+                $staffId,
+                $subscriptionId,
+                $amount,
+                $paymentDate,
+                $paymentTime,
+                $paymentMethod,
+                $refNumber
+            ]);
+
+            $pdo->commit();
+            $message = "Registered {$firstName} {$lastName} ({$memberId}) with Subscription {$subscriptionId} and Payment #{$paymentId}.";
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            $error = "Transaction failed and was rolled back: " . $e->getMessage();
+        }
+    }
+}
+
 include __DIR__ . '/../includes/header.php';
 ?>
 
-<form method="POST">
-    <div class="grid-equal">
+<style>
+    .main-wrapper, .main-content {
+        height: 100vh !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    .content-area, .container {
+        flex: 1 !important;
+        height: calc(100vh - 60px) !important;
+        max-height: calc(100vh - 60px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        padding: 16px 22px !important;
+        gap: 14px !important;
+    }
+    .reg-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+    }
+    .reg-grid > .card {
+        margin-bottom: 0 !important;
+    }
+    .section-subtitle {
+        color: #60a5fa;
+        font-size: 14px;
+        font-weight: 700;
+        margin: 14px 0 10px 0;
+        padding-top: 12px;
+        border-top: 1px solid #1e293b;
+    }
+</style>
+
+<?php if ($message !== ''): ?>
+    <div style="background:rgba(22, 163, 74, 0.2); border:1px solid #22c55e; color:#86efac; padding:10px 14px; border-radius:6px; font-size:13px; flex-shrink:0;">
+        ✓ <?= htmlspecialchars($message) ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($error !== ''): ?>
+    <div style="background:rgba(220, 38, 38, 0.2); border:1px solid #ef4444; color:#fca5a5; padding:10px 14px; border-radius:6px; font-size:13px; flex-shrink:0;">
+        ✕ <?= htmlspecialchars($error) ?>
+    </div>
+<?php endif; ?>
+
+<form method="POST" action="registration.php">
+    <div class="reg-grid">
+        <!-- LEFT CARD: MEMBER & EMERGENCY CONTACT -->
         <div class="card">
-            <h3 style="margin-bottom: 14px;">1. Member Personal Information</h3>
+            <h3 style="margin-bottom: 14px; color: #ffffff;">Member Personal Information</h3>
+
             <div class="form-row">
-                <div class="form-group"><label>First Name</label><input type="text" name="first_name" placeholder="Juan"></div>
-                <div class="form-group"><label>Last Name</label><input type="text" name="last_name" placeholder="Dela Cruz"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Date of Birth</label><input type="date" name="dob"></div>
                 <div class="form-group">
-                    <label>Gender</label>
-                    <select name="gender"><option>Male</option><option>Female</option><option>Other</option></select>
+                    <label>First Name</label>
+                    <input type="text" name="FirstName" placeholder="e.g. Juan" required>
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" name="LastName" placeholder="e.g. Dela Cruz" required>
                 </div>
             </div>
-            <div class="form-row">
-                <div class="form-group"><label>Phone Number</label><input type="text" name="phone_number" placeholder="09171234567"></div>
-                <div class="form-group"><label>Email Address</label><input type="email" name="email" placeholder="juan@email.com"></div>
-            </div>
-            <div class="form-group"><label>Home Address</label><input type="text" name="address" placeholder="Legazpi City, Albay"></div>
 
-            <h3 style="margin: 18px 0 12px;">2. Emergency Contact</h3>
-            <div class="form-group"><label>Contact Name</label><input type="text" name="ec_name" placeholder="Maria Dela Cruz"></div>
             <div class="form-row">
-                <div class="form-group"><label>Relationship</label><input type="text" name="ec_relation" placeholder="Mother / Spouse"></div>
-                <div class="form-group"><label>Contact Phone Number</label><input type="text" name="ec_phone_number" placeholder="09181234567"></div>
+                <div class="form-group">
+                    <label>Date of Birth</label>
+                    <input type="date" name="DateOfBirth" required>
+                </div>
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="text" name="PhoneNumber" placeholder="e.g. 09171234567" required>
+                </div>
+            </div>
+
+            <div class="section-subtitle">Emergency Contact Details</div>
+
+            <div class="form-group">
+                <label>Contact Full Name</label>
+                <input type="text" name="ContactName" placeholder="e.g. Maria Dela Cruz" required>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Relationship</label>
+                    <input type="text" name="Relationship" placeholder="e.g. Mother / Spouse" required>
+                </div>
+                <div class="form-group">
+                    <label>Emergency Contact Phone</label>
+                    <input type="text" name="ContactPhone" placeholder="e.g. 09181234567" required>
+                </div>
             </div>
         </div>
 
+        <!-- RIGHT CARD: SUBSCRIPTION & INITIAL PAYMENT -->
         <div class="card">
-            <h3 style="margin-bottom: 14px;">3. Membership Plan & Initial Payment</h3>
+            <h3 style="margin-bottom: 14px; color: #ffffff;">Membership Plan & Initial Payment</h3>
+
             <div class="form-group">
-                <label>Select Membership Plan (Live from DB)</label>
-                <select name="plan_id">
-                    <option value="">-- Choose Plan --</option>
+                <label>Select Membership Plan</label>
+                <select name="PlanID" id="planSelect" onchange="autoFillPlanPrice()" required>
+                    <option value="">-- Choose Membership Plan --</option>
                     <?php foreach ($plans as $p): ?>
-                        <option value="<?= htmlspecialchars($p['PlanID']) ?>">
-                            <?= htmlspecialchars($p['PlanName']) ?> (<?= $p['DurationDays'] ?> Days) — ₱<?= number_format($p['Price'], 2) ?>
+                        <option value="<?= htmlspecialchars($p['PlanID']) ?>" data-price="<?= htmlspecialchars($p['Price']) ?>">
+                            <?= htmlspecialchars($p['PlanName']) ?> (<?= (int)$p['DurationDays'] ?> Days — ₱<?= number_format((float)$p['Price'], 2) ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="form-group"><label>Start Date</label><input type="date" name="start_date" value="<?= date('Y-m-d') ?>"></div>
+
+            <div class="form-group">
+                <label>Processed By (Admin / Manager)</label>
+                <select name="StaffID" required>
+                    <option value="">-- Select Admin or Manager --</option>
+                    <?php foreach ($staffList as $st): ?>
+                        <option value="<?= htmlspecialchars($st['StaffID']) ?>">
+                            <?= htmlspecialchars($st['StaffID'] . ' — ' . $st['FirstName'] . ' ' . $st['LastName'] . ' (' . $st['StaffType'] . ')') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <div class="form-row">
                 <div class="form-group">
-                    <label>Payment Method</label>
-                    <select name="payment_method"><option>Cash</option><option>GCash</option><option>Maya</option><option>Credit Card</option><option>Debit Card</option></select>
+                    <label>Amount Paid (₱)</label>
+                    <input type="number" step="0.01" min="1" name="Amount" id="amountInput" placeholder="0.00" required>
                 </div>
-                <div class="form-group"><label>Amount Paid (₱)</label><input type="number" step="0.01" name="amount" placeholder="1500.00"></div>
+                <div class="form-group">
+                    <label>Payment Method</label>
+                    <select name="PaymentMethod" required>
+                        <option value="Cash">Cash</option>
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                        <option value="Card">Card</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-group"><label>Reference Number</label><input type="text" name="ref_no" placeholder="OR-2026-001"></div>
 
-            <button type="button" class="btn btn-primary" style="width:100%; margin-top: 12px;">Complete Registration & Payment</button>
+            <div class="form-group">
+                <label>Reference Number <small style="color:#94a3b8;">(Leave blank to auto-generate)</small></label>
+                <input type="text" name="ReferenceNumber" placeholder="Optional for Cash / e-Wallet Ref #">
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%; padding:11px; margin-top:6px;">
+                Complete Member Registration
+            </button>
         </div>
     </div>
 </form>
+
+<script>
+function autoFillPlanPrice() {
+    const select = document.getElementById('planSelect');
+    const selectedOption = select.options[select.selectedIndex];
+    const price = selectedOption ? selectedOption.getAttribute('data-price') : '';
+    if (price) {
+        document.getElementById('amountInput').value = price;
+    }
+}
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
