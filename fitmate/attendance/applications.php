@@ -135,6 +135,38 @@ include __DIR__ . '/../includes/header.php';
         overflow: hidden !important;
     }
 
+    /* Consistent Black & Blue Search Bar Styling */
+    .search-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 12px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .search-bar input {
+        flex: 1;
+        background: #060913 !important;
+        border: 1px solid #1e293b !important;
+        color: #f1f5f9 !important;
+        padding: 10px 14px !important;
+        border-radius: 6px !important;
+        font-size: 13.5px !important;
+        outline: none !important;
+        transition: border-color 0.2s ease;
+    }
+    .search-bar input::placeholder {
+        color: #64748b !important;
+    }
+    .search-bar input:focus {
+        border-color: #2563eb !important;
+    }
+    .search-bar button {
+        padding: 10px 18px !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        flex-shrink: 0;
+    }
+
     /* FIXED TABLE HEADER + SCROLLABLE TBODY */
     .fixed-table-wrap {
         border: 1px solid #1e293b;
@@ -266,7 +298,18 @@ include __DIR__ . '/../includes/header.php';
 
     <!-- RIGHT CARD: PROGRAM APPLICATION LIST -->
     <div class="card">
-        <h3 style="margin-bottom: 12px; flex-shrink: 0;">Program Application List (<?= count($applications) ?> Records)</h3>
+        <h3 style="margin-bottom: 12px; flex-shrink: 0;">Program Application List (<span id="appCount"><?= count($applications) ?></span> Records)</h3>
+
+        <div class="search-bar">
+            <input
+                type="text"
+                id="liveAppSearch"
+                onkeyup="filterApplicationsTable()"
+                oninput="filterApplicationsTable()"
+                placeholder="Search by App ID, Member ID, Member Name, Program, or Status..."
+            >
+            <button type="button" class="btn btn-primary" onclick="filterApplicationsTable()">Search</button>
+        </div>
 
         <div class="fixed-table-wrap">
             <table class="fixed-table">
@@ -280,9 +323,9 @@ include __DIR__ . '/../includes/header.php';
                         <th style="width: 23%;">Action</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="appTableBody">
                     <?php if (empty($applications)): ?>
-                        <tr><td colspan="6">No program applications found.</td></tr>
+                        <tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:18px;">No program applications found.</td></tr>
                     <?php else: foreach ($applications as $app):
                         $status = $app['Status'] ?? 'Pending';
                         $badgeClass = 'badge badge-amber'; // Pending
@@ -294,7 +337,7 @@ include __DIR__ . '/../includes/header.php';
                             $badgeClass = 'badge badge-gray';
                         }
                     ?>
-                        <tr>
+                        <tr class="app-row" data-member-id="<?= htmlspecialchars(strtolower($app['MemberID'])) ?>">
                             <td style="width: 10%;"><strong><?= htmlspecialchars($app['ApplicationID']) ?></strong></td>
                             <td style="width: 18%;"><?= htmlspecialchars($app['MemberName']) ?></td>
                             <td style="width: 26%;"><?= htmlspecialchars($app['ProgramName']) ?></td>
@@ -328,10 +371,50 @@ include __DIR__ . '/../includes/header.php';
                             </td>
                         </tr>
                     <?php endforeach; endif; ?>
+                    <tr id="noAppMatchRow" style="display: none;">
+                        <td colspan="6" style="text-align:center; color:#94a3b8; padding:18px;">No program applications found.</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
+<script>
+function filterApplicationsTable() {
+    const query = document.getElementById('liveAppSearch').value.toLowerCase().trim();
+    const rows = document.querySelectorAll('#appTableBody .app-row');
+    const noMatchRow = document.getElementById('noAppMatchRow');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const appId       = row.cells[0].textContent.toLowerCase();
+        const memberName  = row.cells[1].textContent.toLowerCase();
+        const programName = row.cells[2].textContent.toLowerCase();
+        const dateApplied = row.cells[3].textContent.toLowerCase();
+        const status      = row.cells[4].textContent.toLowerCase();
+        const memberId    = (row.getAttribute('data-member-id') || '').toLowerCase();
+
+        if (
+            appId.includes(query) ||
+            memberId.includes(query) ||
+            memberName.includes(query) ||
+            programName.includes(query) ||
+            dateApplied.includes(query) ||
+            status.includes(query)
+        ) {
+            row.style.display = 'table';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    document.getElementById('appCount').textContent = visibleCount;
+    if (noMatchRow) {
+        noMatchRow.style.display = (rows.length > 0 && visibleCount === 0) ? 'table' : 'none';
+    }
+}
+</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
