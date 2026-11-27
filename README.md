@@ -1,3 +1,3 @@
-<h1>ILALABAN NATIN TOooo</h1>
+<h1><i>ILALABAN NATIN TOooo</i></h1>
 
 <h2>DEFENDED CUTIE</h2>
