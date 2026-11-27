@@ -1,13 +1,9 @@
-CREATE DATABASE IF NOT EXISTS `fitmate_db`;
-USE `fitmate_db`;
-
-
 -- phpMyAdmin SQL Dump
 -- version 5.2.3
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 23, 2026 at 09:03 AM
+-- Generation Time: Nov 27, 2026 at 05:42 AM
 -- Server version: 10.11.16-MariaDB
 -- PHP Version: 8.3.36
 
@@ -24,6 +20,8 @@ SET time_zone = "+00:00";
 --
 -- Database: `fitmate_db`
 --
+CREATE DATABASE IF NOT EXISTS `fitmate_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE `fitmate_db`;
 
 DELIMITER $$
 --
@@ -84,8 +82,11 @@ INSERT INTO `application` (`ApplicationID`, `MemberID`, `ProgramID`, `Applicatio
 ('APP312', 'MEM112', 'PRG207', '2026-11-05', 'Approved'),
 ('APP313', 'MEM113', 'PRG208', '2026-11-05', 'Approved'),
 ('APP314', 'MEM114', 'PRG204', '2026-09-25', 'Approved'),
-('APP315', 'MEM115', 'PRG204', '2026-11-10', 'Pending'),
-('APP316', 'MEM101', 'PRG206', '2026-11-21', 'Approved');
+('APP315', 'MEM115', 'PRG204', '2026-11-10', 'Cancelled'),
+('APP316', 'MEM101', 'PRG206', '2026-11-21', 'Approved'),
+('APP317', 'MEM101', 'PRG204', '2026-11-26', 'Approved'),
+('APP318', 'MEM101', 'PRG203', '2026-11-26', 'Rejected'),
+('APP319', 'MEM101', 'PRG202', '2026-11-26', 'Cancelled');
 
 -- --------------------------------------------------------
 
@@ -99,7 +100,7 @@ CREATE TABLE `attendance` (
   `MemberID` varchar(15) NOT NULL,
   `Date` date NOT NULL,
   `TimeIn` time NOT NULL,
-  `TimeOut` time NOT NULL
+  `TimeOut` time DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -121,7 +122,20 @@ INSERT INTO `attendance` (`AttendanceID`, `MemberID`, `Date`, `TimeIn`, `TimeOut
 ('ATT8012', 'MEM112', '2026-11-13', '15:20:00', '17:00:00'),
 ('ATT8013', 'MEM113', '2026-11-11', '10:50:00', '12:15:00'),
 ('ATT8014', 'MEM114', '2026-11-13', '13:20:00', '14:50:00'),
-('ATT8015', 'MEM115', '2026-11-13', '07:55:00', '09:40:00');
+('ATT8015', 'MEM115', '2026-11-13', '07:55:00', '09:40:00'),
+('ATT8016', 'MEM101', '2026-11-25', '10:46:13', '10:46:27'),
+('ATT8017', 'MEM102', '2026-11-25', '10:57:26', '11:01:31'),
+('ATT8018', 'MEM103', '2026-11-25', '11:01:39', '11:03:47'),
+('ATT8019', 'MEM104', '2026-11-25', '11:09:01', '11:03:33'),
+('ATT8020', 'MEM101', '2026-11-26', '11:10:12', '11:10:15'),
+('ATT8021', 'MEM101', '2026-11-26', '13:12:43', '13:13:14'),
+('ATT8022', 'MEM107', '2026-11-26', '13:13:48', '13:13:59'),
+('ATT8023', 'MEM106', '2026-11-26', '13:14:26', '06:39:52'),
+('ATT8024', 'MEM112', '2026-11-26', '13:15:04', '06:39:51'),
+('ATT8025', 'MEM104', '2026-11-26', '13:15:11', '06:39:49'),
+('ATT8026', 'MEM101', '2026-11-27', '06:40:06', '00:00:00'),
+('ATT8027', 'MEM102', '2026-11-27', '06:40:11', '00:00:00'),
+('ATT8028', 'MEM103', '2026-11-27', '06:40:19', '00:00:00');
 
 -- --------------------------------------------------------
 
@@ -157,7 +171,9 @@ INSERT INTO `emergency_contact` (`ContactID`, `MemberID`, `ContactName`, `Relati
 ('EMG412', 'MEM112', 'Moonbyul Moon', 'Bandmate', '0961-825-3212'),
 ('EMG413', 'MEM113', 'Mina Kang', 'Friend', '0998-460-7213'),
 ('EMG414', 'MEM114', 'Bora Yoon', 'Bandmate', '0915-903-4214'),
-('EMG415', 'MEM115', 'Sakura Miyawaki', 'Bandmate', '0999-217-8215');
+('EMG415', 'MEM115', 'Sakura Miyawaki', 'Bandmate', '0999-217-8215'),
+('EMG416', 'MEM116', 'Jerisa Carcueba', 'Mother', '094301214561'),
+('EMG417', 'MEM117', 'Yoo Junghyuk', 'ex', '09235371523');
 
 -- --------------------------------------------------------
 
@@ -180,10 +196,10 @@ CREATE TABLE `equipment` (
 --
 
 INSERT INTO `equipment` (`EquipmentID`, `StaffID`, `EquipmentName`, `EquipmentStatus`, `PurchaseDate`, `Vendor`) VALUES
-('EQ101', 'MNT-003', 'Treadmill Pro 5000', 'Operational', '2025-01-15', 'FitTech Supplies'),
-('EQ102', 'MNT-003', 'Olympic Bench Press', 'Under Maintenance', '2024-06-10', 'Iron Grip Co.'),
+('EQ101', 'MNT-003', 'Treadmill Pro 5000', 'Under Maintenance', '2025-01-15', 'FitTech Supplies'),
+('EQ102', 'MNT-003', 'Olympic Bench Press', 'Operational', '2024-06-10', 'Iron Grip Co.'),
 ('EQ103', 'MNT-004', 'Rowing Machine X', 'Under Maintenance', '2025-08-20', 'FitTech Supplies'),
-('EQ104', 'MNT-004', 'Cable Crossover Maachine', 'Operationl', '2024-11-01', 'HeavyDuty Gym'),
+('EQ104', 'MNT-004', 'Cable Crossover Maachine', 'Operational', '2024-11-01', 'HeavyDuty Gym'),
 ('EQ105', 'MNT-003', 'Reformer Pilates Bed', 'Operational', '2025-05-12', 'CoreBalance Studio');
 
 -- --------------------------------------------------------
@@ -221,7 +237,9 @@ INSERT INTO `gym_member` (`MemberID`, `FirstName`, `LastName`, `DateOfBirth`, `P
 ('MEM112', 'Solar', 'Kim', '1991-02-21', '0961-492-7112', 0),
 ('MEM113', 'Sejeong', 'Kim', '1996-08-28', '0998-714-2113', 0),
 ('MEM114', 'Soyou', 'Kang', '1992-02-12', '0915-368-9114', 0),
-('MEM115', 'Yunjin', 'Huh', '2001-10-08', '0999-825-4115', 0);
+('MEM115', 'Yunjin', 'Huh', '2001-10-08', '0999-825-4115', 0),
+('MEM116', 'Keith', 'Carcueba', '2005-11-11', '09488895618', 0),
+('MEM117', 'Kim', 'Dokja', '2026-03-07', '09502842316', 0);
 
 --
 -- Triggers `gym_member`
@@ -259,15 +277,15 @@ CREATE TABLE `gym_staff` (
 
 INSERT INTO `gym_staff` (`StaffID`, `FirstName`, `LastName`, `DateOfBirth`, `StaffType`) VALUES
 ('AD-001', 'Keith Nico', 'Carcueba', '2005-11-11', 'Admin'),
-('AD-002', 'Kyle', 'Carcueba', '2000-01-01', 'Admin'),
+('AD-003', 'Mix', 'Koi', '2000-01-01', 'Admin'),
 ('MNT-003', 'Yugyeom', 'Kim', '1997-11-17', 'Maintenance'),
-('MNT-004', 'Mark', 'Tuan', '1993-09-04', 'Maintenance'),
+('MNT-004', 'MarkLI', 'Tuan', '1993-09-04', 'Maintenance'),
 ('TRN-001', 'Sungjin', 'Park', '1993-01-16', 'Trainer'),
 ('TRN-002', 'Young K', 'Kang', '1993-12-19', 'Trainer'),
 ('TRN-005', 'Wonpil', 'Kim', '1994-04-28', 'Trainer'),
 ('TRN-006', 'BamBam', 'Kunpimook', '1997-05-02', 'Trainer'),
 ('TRN-007', 'Jackson', 'Wang', '1994-03-28', 'Trainer'),
-('TRN-008', 'Kyle', 'Carcueba', '2011-02-16', 'Trainer');
+('TRN-008', 'Kyle', 'Echari', '2026-11-05', 'Maintenance');
 
 -- --------------------------------------------------------
 
@@ -309,12 +327,23 @@ INSERT INTO `login_history` (`LoginID`, `StaffID`, `LoginDate`, `LoginTime`) VAL
 (20, 'AD-001', '2026-11-21', '12:35:13'),
 (21, 'AD-001', '2026-11-21', '16:11:50'),
 (22, 'AD-001', '2026-11-21', '17:40:06'),
-(23, 'AD-002', '2026-11-21', '17:43:50'),
 (24, 'AD-001', '2026-11-21', '17:54:07'),
 (25, 'AD-001', '2026-11-22', '17:16:10'),
 (26, 'AD-001', '2026-11-22', '18:01:43'),
 (27, 'AD-001', '2026-11-23', '14:51:44'),
-(28, 'AD-001', '2026-11-23', '15:32:04');
+(28, 'AD-001', '2026-11-23', '15:32:04'),
+(29, 'AD-001', '2026-11-24', '07:25:04'),
+(30, 'AD-001', '2026-11-24', '16:22:42'),
+(31, 'AD-001', '2026-11-24', '16:23:46'),
+(32, 'AD-001', '2026-11-24', '16:25:11'),
+(33, 'AD-001', '2026-11-24', '16:25:56'),
+(34, 'AD-001', '2026-11-24', '16:26:27'),
+(35, 'AD-001', '2026-11-25', '05:32:55'),
+(36, 'AD-001', '2026-11-25', '10:31:50'),
+(37, 'AD-001', '2026-11-26', '11:03:08'),
+(38, 'AD-001', '2026-11-26', '12:47:32'),
+(39, 'AD-003', '2026-11-26', '13:05:23'),
+(40, 'AD-003', '2026-11-27', '06:37:44');
 
 -- --------------------------------------------------------
 
@@ -335,7 +364,35 @@ CREATE TABLE `maintenance` (
 
 INSERT INTO `maintenance` (`StaffID`, `WorkSchedule`, `AssignedTask`) VALUES
 ('MNT-003', 'Monday, Tuesday, Wednesday', 'Belt lubrication, bench upholstery & spring calibration; Treadmill motor diagnostics & safety key check'),
-('MNT-004', 'Thursday, Friday, Saturday', 'Drive chain replacement & cable tension inspection');
+('MNT-004', 'Thursday, Friday, Saturday', 'Drive chain replacement & cable tension inspection'),
+('TRN-008', 'mon, tuesday', 'dumbell');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `maintenance_log`
+--
+
+DROP TABLE IF EXISTS `maintenance_log`;
+CREATE TABLE `maintenance_log` (
+  `LogID` varchar(15) NOT NULL,
+  `EquipmentID` varchar(15) NOT NULL,
+  `StaffID` varchar(15) NOT NULL,
+  `IssueDescription` varchar(255) NOT NULL,
+  `DateReported` date NOT NULL,
+  `DateRepaired` date DEFAULT NULL,
+  `RepairStatus` varchar(30) NOT NULL DEFAULT 'Pending'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `maintenance_log`
+--
+
+INSERT INTO `maintenance_log` (`LogID`, `EquipmentID`, `StaffID`, `IssueDescription`, `DateReported`, `DateRepaired`, `RepairStatus`) VALUES
+('MLOG001', 'EQ101', 'MNT-003', 'Treadmill Pro 5000 belt alignment and motor lubrication', '2026-11-27', NULL, 'Pending'),
+('MLOG002', 'EQ102', 'MNT-003', 'Olympic Bench Press frame weld inspection and padding replacement', '2026-11-22', '2026-11-27', 'Repaired'),
+('MLOG003', 'EQ103', 'MNT-004', 'Rowing Machine X chain tension calibration and seat roller check', '2026-11-25', NULL, 'Pending'),
+('MLOG004', 'EQ102', 'MNT-003', 'Nasira ang dumbell', '2026-11-27', '2026-11-27', 'Repaired');
 
 -- --------------------------------------------------------
 
@@ -358,7 +415,8 @@ CREATE TABLE `membership_plan` (
 INSERT INTO `membership_plan` (`PlanID`, `PlanName`, `DurationDays`, `Price`) VALUES
 ('PLN01', 'Monthly Standard', '30 Days', 1500.00),
 ('PLN02', 'Quarterly Basic', '90 Days', 4000.00),
-('PLN03', 'Annual VIP', '365 Days', 14500.00);
+('PLN03', 'Annual VIP', '365 Days', 14500.00),
+('PLN04', 'Weekly Starter Plan', '7', 500.00);
 
 -- --------------------------------------------------------
 
@@ -399,7 +457,10 @@ INSERT INTO `payment` (`PaymentID`, `MemberID`, `StaffID`, `SubscriptionID`, `Am
 (5013, 'MEM113', 'AD-001', 'SUB1013', 1500.00, '2026-11-05', '11:25:00', 'Maya', 'MY-8473625190'),
 (5014, 'MEM114', 'AD-001', 'SUB1014', 4000.00, '2026-09-25', '14:25:00', 'Debit Card', 'REF-20260925-014'),
 (5015, 'MEM115', 'AD-001', 'SUB1015', 1500.00, '2026-11-10', '16:05:00', 'GCash', 'GC-7362519480'),
-(5016, 'MEM109', 'AD-001', 'SUB1009', 1500.00, '2026-11-22', '17:57:56', 'Cash', 'OR-20261122-016');
+(5016, 'MEM109', 'AD-001', 'SUB1009', 1500.00, '2026-11-22', '17:57:56', 'Cash', 'OR-20261122-016'),
+(5017, 'MEM116', 'AD-001', 'SUB1016', 1500.00, '2026-11-26', '04:37:50', 'Cash', 'REF-20261126043750-398'),
+(5018, 'MEM117', 'AD-003', 'SUB1017', 1500.00, '2026-11-26', '06:06:58', 'Cash', 'REF-20261126060658-140'),
+(5019, 'MEM109', 'AD-003', 'SUB1009', 1500.00, '2026-11-26', '06:18:14', 'Cash', 'REF-20261126-4824');
 
 -- --------------------------------------------------------
 
@@ -423,11 +484,12 @@ INSERT INTO `program` (`ProgramID`, `StaffID`, `ProgramName`, `Schedule`) VALUES
 ('PRG201', 'TRN-007', 'Heavy Hypertrophy & Bulk', 'Mon/Wed/Fri 08:00 AM'),
 ('PRG202', 'TRN-005', 'Full-Body Strength & Conditioning', 'Tue/Thu 09:30 AM'),
 ('PRG203', 'TRN-002', 'Upper Body Power & Core', 'Mon/Wed 2:00 PM'),
-('PRG204', 'TRN-006', 'Ballet COre & Pilates', 'Tue/Thu 10:00 AM'),
+('PRG204', 'TRN-006', 'Ballet Core & Pilates', 'Tue/Thu 10:00 AM'),
 ('PRG205', 'TRN-002', 'High-Intensity Dance Stamina', 'Wed/Fri 04:00 PM'),
 ('PRG206', 'TRN-005', 'Athletic Boxing & Cardio', 'Sat 11:00 AM'),
 ('PRG207', 'TRN-001', 'Funtional Kettlebell & Pole Prep', 'Mon/Thu 01:00 PM'),
-('PRG208', 'TRN-001', 'Endurance & Calisthenics', 'Tue/Fri 03:30 PM');
+('PRG208', 'TRN-001', 'Endurance & Calisthenics', 'Tue/Fri 03:30 PM'),
+('PRG209', 'TRN-006', 'Yoga', 'mon/wed');
 
 -- --------------------------------------------------------
 
@@ -489,13 +551,15 @@ INSERT INTO `subscription` (`SubscriptionID`, `MemberID`, `PlanID`, `StartDate`,
 ('SUB1006', 'MEM106', 'PLN02', '2026-09-15', '2026-12-14', 'Active'),
 ('SUB1007', 'MEM107', 'PLN01', '2026-11-03', '2026-12-03', 'Active'),
 ('SUB1008', 'MEM108', 'PLN03', '2026-07-20', '2027-07-20', 'Active'),
-('SUB1009', 'MEM109', 'PLN01', '2026-09-01', '2026-10-01', 'Active'),
+('SUB1009', 'MEM109', 'PLN01', '2026-11-26', '2026-12-26', 'Active'),
 ('SUB1010', 'MEM110', 'PLN03', '2026-10-08', '2027-10-08', 'Active'),
 ('SUB1011', 'MEM111', 'PLN02', '2026-10-18', '2027-01-16', 'Active'),
 ('SUB1012', 'MEM112', 'PLN03', '2026-05-22', '2027-05-22', 'Active'),
 ('SUB1013', 'MEM113', 'PLN01', '2026-11-05', '2026-12-05', 'Active'),
 ('SUB1014', 'MEM114', 'PLN02', '2026-09-25', '2026-12-24', 'Active'),
-('SUB1015', 'MEM115', 'PLN01', '2026-11-10', '2026-12-10', 'Active');
+('SUB1015', 'MEM115', 'PLN01', '2026-11-10', '2026-12-10', 'Active'),
+('SUB1016', 'MEM116', 'PLN01', '2026-11-26', '2026-12-26', 'Active'),
+('SUB1017', 'MEM117', 'PLN01', '2026-11-26', '2026-12-26', 'Active');
 
 -- --------------------------------------------------------
 
@@ -517,7 +581,7 @@ CREATE TABLE `system_access` (
 
 INSERT INTO `system_access` (`StaffID`, `Username`, `Password`, `Role`) VALUES
 ('AD-001', 'kit', '$2y$10$xB46m.k2b4ZJknfvEAl48ez43qP3K9POqdMIPwhJ5qDJY7TTzrDbu', 'Admin'),
-('AD-002', 'admin', '$2y$10$/G2M8yuX7YRvT78sPY4wrOA9MGI2HwMZRNGpUia3iY/UBs4KCntea', 'Admin');
+('AD-003', 'Koi', '$2y$10$b4wqTVdk26JZHkP9xrc5BeAv6ztmlbreA2gxDuRBK2OwB7fvnWkl.', 'Admin');
 
 -- --------------------------------------------------------
 
@@ -540,8 +604,7 @@ INSERT INTO `trainer` (`StaffID`, `Certification`) VALUES
 ('TRN-002', 'ACE Master Fitness Specialist'),
 ('TRN-005', 'CSCS (Certified Strength & Conditioning Specialist'),
 ('TRN-006', 'PMA-CPT Certified Pilates Master'),
-('TRN-007', 'IFBB Pro Coach & NSCA-CPT'),
-('TRN-008', 'Certified Fitness Coach');
+('TRN-007', 'IFBB Pro Coach & NSCA-CPT');
 
 -- --------------------------------------------------------
 
@@ -620,6 +683,14 @@ ALTER TABLE `maintenance`
   ADD PRIMARY KEY (`StaffID`);
 
 --
+-- Indexes for table `maintenance_log`
+--
+ALTER TABLE `maintenance_log`
+  ADD PRIMARY KEY (`LogID`),
+  ADD KEY `idx_mlog_equipment` (`EquipmentID`),
+  ADD KEY `idx_mlog_staff` (`StaffID`);
+
+--
 -- Indexes for table `membership_plan`
 --
 ALTER TABLE `membership_plan`
@@ -676,13 +747,13 @@ ALTER TABLE `trainer`
 -- AUTO_INCREMENT for table `login_history`
 --
 ALTER TABLE `login_history`
-  MODIFY `LoginID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=29;
+  MODIFY `LoginID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=41;
 
 --
 -- AUTO_INCREMENT for table `payment`
 --
 ALTER TABLE `payment`
-  MODIFY `PaymentID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5017;
+  MODIFY `PaymentID` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5020;
 
 -- --------------------------------------------------------
 
@@ -734,6 +805,13 @@ ALTER TABLE `login_history`
 --
 ALTER TABLE `maintenance`
   ADD CONSTRAINT `fk_maintenance_staff` FOREIGN KEY (`StaffID`) REFERENCES `gym_staff` (`StaffID`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `maintenance_log`
+--
+ALTER TABLE `maintenance_log`
+  ADD CONSTRAINT `fk_mlog_equipment` FOREIGN KEY (`EquipmentID`) REFERENCES `equipment` (`EquipmentID`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_mlog_maintenance` FOREIGN KEY (`StaffID`) REFERENCES `maintenance` (`StaffID`) ON UPDATE CASCADE;
 
 --
 -- Constraints for table `payment`
